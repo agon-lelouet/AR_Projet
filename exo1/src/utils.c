@@ -40,5 +40,22 @@ void printnodes(struct node *nodes, size_t size, int isfingers) {
 			}
 		}
 	}
-
 }
+
+// struct node* find_successor(struct node *node, int key) {
+// 	if (node->key < node->fingers[0]->key) {
+// 		if (key > node->key && key <= node->fingers[0]->key) {
+// 			return node->fingers[0];
+// 		}
+// 	}
+// 	if (node->key > node->fingers[0]->key) {
+// 		if (key < max_node) {
+
+// 		}
+// 		if (key )
+// 	}
+// }
+
+// struct* closes_preceding_node(struct node *node, int key) {
+
+// }
