@@ -1,4 +1,6 @@
 **/bin/*
+!**/bin/.gitkeep
 **/obj/*
+!**/obj/.gitkeep
 log
 **/.vscode/*
