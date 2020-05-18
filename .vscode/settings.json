@@ -1,6 +1,7 @@
 {
     "files.associations": {
         "utils.h": "c",
-        "conf.h": "c"
+        "conf.h": "c",
+        "array": "c"
     }
 }

@@ -9,8 +9,6 @@
 #include "conf.h"
 #include "utils.h"
 
-int m = M;
-
 void simulateur(int size, int max_node) {
 	int nodeid, not_unique = 1;
 	struct node nodes[size];
@@ -32,7 +30,8 @@ void simulateur(int size, int max_node) {
 			}
 		}
 		nodes[i].key = nodeid;
-		nodes[i].rank = i+1;
+		nodes[i].rank = i;
+		nodes[i].fingers = malloc(M * sizeof(struct node));
 		printf("node %d done \n", i);
 		not_unique = 1;
 	}
@@ -46,7 +45,7 @@ void simulateur(int size, int max_node) {
 	int start, startindex;
 	struct node *currnode, *currfinger;
 	for (int i = 0; i < size; i++) {
-		for (int j = 0; j < m; j++) {
+		for (int j = 0; j < M; j++) {
 			start = (nodes[i].key + (int)pow(2, j))% max_node;
 			// printf("#####node %d finger %d start %d ####\n", i, j,start);
 			// on parcourt du plus grand au plus petit noeud
@@ -57,12 +56,12 @@ void simulateur(int size, int max_node) {
 				if (nodes[k].key >= start) {
 					// printf("%d next closest is %d \n", start, nodes[(k)%size].key);
 					found = 1;
-					nodes[i].fingers[j] = &nodes[(k)%size];
+					nodes[i].fingers[j] = nodes[k];
 					break;
 				}
 			}
 			if (!found) {
-				nodes[i].fingers[j] = &nodes[0];
+				nodes[i].fingers[j] = nodes[0];
 				// printf("%d next closest is %d \n", start, nodes[0].key);
 			}
 		}
@@ -78,13 +77,11 @@ void simulateur(int size, int max_node) {
 		MPI_Send(&nodes[i].key, 1, MPI_INT, mpi_dest, TAGINIT, MPI_COMM_WORLD);
 		// sending the finger table
 		// printf("sending finger table to %d \n", mpi_dest);
-		for (int j = 0; j < M; j++) {
-			MPI_Send(nodes[i].fingers[j], sizeof(struct node), MPI_CHAR, mpi_dest, TAGINIT, MPI_COMM_WORLD);
-		}
+		MPI_Send(nodes[i].fingers, M * sizeof(struct node), MPI_CHAR, mpi_dest, TAGINIT, MPI_COMM_WORLD);
 	}
 	int randkey, randnodeindex, res;
 	randkey = random()%max_node;
-	randnodeindex = (random()%(size-1)) + 1;
+	randnodeindex = (random()%size);
 	// printf("randomenodeindex = %d \n", randnodeindex);
 	struct query query = {
 		.key = randkey,
@@ -94,11 +91,12 @@ void simulateur(int size, int max_node) {
 	MPI_Send(&query, sizeof(struct query), MPI_CHAR, nodes[randnodeindex].rank, TAGQUERY, MPI_COMM_WORLD
 	);
 	MPI_Recv(&res, 1, MPI_INT, MPI_ANY_SOURCE, TAGOVER, MPI_COMM_WORLD, &status);
-	// printf("received response node %d from rank %d \n", res, status.MPI_SOURCE);
-	for (int j = 0; j < M; j++) {
+	printf("received response node %d from rank %d \n", res, status.MPI_SOURCE);
+	for (int j = 0; j < size; j++) {
 		MPI_Send(&res, 1, MPI_INT, nodes[j].rank, TAGOVER, MPI_COMM_WORLD);
+		free(nodes[j].fingers);
 	}
-	// printf("SENT TAGOVER TO EVERYONE, TERMINATING \n");
+	printf("SENT TAGOVER TO EVERYONE, TERMINATING \n");
 	return;
 }
 
@@ -109,13 +107,10 @@ void node(int rank, int size) {
 	};
 	MPI_Status status;
 	// printf("rank %d waiting for nodeid \n", rank);
-	MPI_Recv(&node.key, 1, MPI_INT, 0, TAGINIT, MPI_COMM_WORLD, &status);
+	MPI_Recv(&node.key, 1, MPI_INT, size, TAGINIT, MPI_COMM_WORLD, &status);
 	// printf("rank %d received nodeid %d \n", rank, node.key);
-	for (int i = 0; i < M; i++) {
-		// c'est chelou je sais
-		MPI_Recv(&fingers[i], sizeof(struct node), MPI_CHAR, 0, TAGINIT, MPI_COMM_WORLD, &status);
-		node.fingers[i] = &fingers[i];
-	}
+	node.fingers = malloc(M * sizeof(struct node));
+	MPI_Recv(node.fingers, M * sizeof(struct node), MPI_CHAR, size, TAGINIT, MPI_COMM_WORLD, &status);
 	// printf("Rank %d received finger table \n", rank);
 	// printnodes(&node, 1, 1);
 	int found;
@@ -130,71 +125,43 @@ void node(int rank, int size) {
 		}
 
 		printf("node %d received query for key %d \n", node.key, query.key);
-
-		if (node.key < node.fingers[0]->key) {
-			if (query.key > node.key && node.fingers[0]->key >= query.key) {
-				printf("found ! node %d \n", node.fingers[0]->key);
-				MPI_Send(&node.fingers[0]->key, 1, MPI_INT, 0, TAGOVER, MPI_COMM_WORLD
-				);
-				continue;
-			}
-		// on gère le cas du loopbackœ&
-		} else if (node.key > node.fingers[0]->key) {
-			if (query.key > node.key) {
-				printf("found ! node %d \n", node.fingers[0]->key);
-				MPI_Send(&node.fingers[0]->key, 1, MPI_INT, 0, TAGOVER, MPI_COMM_WORLD
-				);
-				continue;
-			} else if (query.key < node.fingers[0]->key) {
-				printf("found ! node %d \n", node.fingers[0]->key);
-				MPI_Send(&node.fingers[0]->key, 1, MPI_INT, 0, TAGOVER, MPI_COMM_WORLD
-				);
-				continue;
-			}
+		// on vérifie si la clef reçue est entre notre clef est la clef de notre successeur
+		if (
+			(node.key < node.fingers[0].key && query.key > node.key && node.fingers[0].key >= query.key)
+			||
+			node.key >= node.fingers[0].key && (query.key > node.key || query.key <= node.fingers[0].key)
+		) {
+			printf("node %d FOUND ! %d", node.key, node.fingers[0].key);
+			MPI_Send(&node.fingers[0].key, 1, MPI_INT, size, TAGOVER, MPI_COMM_WORLD);
+			continue;
 		}
-		printf("key %d not between %d and %d, looking on finger table... \n", query.key, node.key, node.fingers[0]->key);
-		// sinon, on cherche le predecesseur de id le plus élevé dans notre ginger table
-
+		printf("key %d not between %d and %d, looking on finger table... \n", query.key, node.key, node.fingers[0].key);
+		int max = 0;
 		for (int i = M-1; i >= 0; i--) {
-			if (node.key < node.fingers[i]->key && query.key > node.fingers[i]->key) {
-				printf("for node %d, key %d highest preceding node is %d \n", node.key, query.key, node.fingers[i]->key);
-				MPI_Send(&query, sizeof(struct query), MPI_CHAR, node.fingers[i]->rank, TAGQUERY, MPI_COMM_WORLD);
-				found = 1;
-				break;
-
+			// node.key < node.fingers[i].key && 
+			if (query.key >= node.fingers[i].key) {
+				if (found) {
+					if (node.fingers[i].key > node.fingers[max].key) {
+						max = i;
+					}
+				} else {
+					max = i;
+					found = 1;
+				}
 			}
-			// if (node.key > query.key) {
-			// 	if (node.fingers[i]->key > node.key) {
-			// 		printf("for node %d, key %d highest preceding node is %d \n", node.key, query.key, node.fingers[i]->key);
-			// 		MPI_Send(&query, sizeof(struct query), MPI_CHAR, node.fingers[i]->rank, TAGQUERY, MPI_COMM_WORLD);
-			// 		break;
-
-			// 	} else if (node.fingers[i]->key < query.key){
-			// 		printf("for node %d, key %d highest preceding node is %d \n", node.key, query.key, node.fingers[i]->key);
-			// 		MPI_Send(&query, sizeof(struct query), MPI_CHAR, node.fingers[i]->rank, TAGQUERY, MPI_COMM_WORLD);
-			// 		break;
-			// 	}
-			// } else if (node.key < query.key) {
-			// 	if (node.fingers[i]->key > node.key && node.fingers[i]->key < query.key) {
-			// 		printf("for node %d, key %d highest preceding node is %d \n", node.key, query.key, node.fingers[i]->key);
-			// 		MPI_Send(&query, sizeof(struct query), MPI_CHAR, node.fingers[i]->rank, TAGQUERY, MPI_COMM_WORLD);
-			// 		break;
-			// 	}
-			// }
-			// if (node.fingers[i]->key < query.key) {
-			// 	printf("for node %d, key %d highest preceding node is %d \n", node.key, query.key, node.fingers[i]->key);
-			// 	MPI_Send(&query, sizeof(struct query), MPI_CHAR, node.fingers[i]->rank, TAGQUERY, MPI_COMM_WORLD);
-			// 	break;
-			// }
 		}
-		// forwarding to successor
+		// sinon, on cherche le predecesseur d'id le plus élevé dans notre finger table
 		if (!found) {
-			printf("key %d not found in finger table, node %d forwarding to successor %d, \n", query.key, node.key, node.fingers[0]->key);
-			MPI_Send(&query, sizeof(struct query), MPI_CHAR, node.fingers[0]->rank, TAGQUERY, MPI_COMM_WORLD);
-			break;
+			printf("key %d not found in finger table, sending to highest known node\n", query.key);
+			max = 0;
+			for (int i = 0; i < M; i++) {
+				if (node.fingers[i].key > node.fingers[max].key) {
+					max = i;
+				}
+			}
 		}
-
-
+		printf("for node %d key %d highest preceding node is %d \n", node.key, query.key, node.fingers[max].key);
+		MPI_Send(&query, sizeof(struct query), MPI_CHAR, node.fingers[max].rank, TAGQUERY, MPI_COMM_WORLD);
 	}
 
 	return;
@@ -206,12 +173,12 @@ int main(int argc, char **argv) {
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-	max_node = pow(2, m);
+	max_node = pow(2, M);
 
-	if (rank == 0) {
+	if (rank == size - 1) {
 		simulateur(size - 1, max_node);
 	} else {
-		node(rank, size);
+		node(rank, size - 1);
 	}
    	MPI_Finalize();
 }

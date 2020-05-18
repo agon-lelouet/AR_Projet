@@ -1,0 +1,1 @@
+Afin de tester ce code, mettre un nombre de processus MPI égal au nombre de pairs CHORD souhaité + 1 (pour le simulateur).

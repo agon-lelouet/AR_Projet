@@ -12,7 +12,7 @@
 struct node {
 	int key; // la clef du noeud pour CHORD
 	int rank; // l'identifiant physique du noeud
-	struct node *fingers[6];
+	struct node *fingers;
 };
 
 struct query {

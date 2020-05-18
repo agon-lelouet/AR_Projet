@@ -31,12 +31,17 @@ void sort(struct node *nodes, int low, int high) {
 	}
 }
 
-void printnodes(struct node *nodes, size_t size, int isfingers) {
+void printnodes(struct node *nodes, size_t size, int isfingers, int isreverse) {
 	for (int i = 0; i < size; i++) {
 		printf("#### chord node : %d, mpi rank %d, fingers : #### \n", nodes[i].key, nodes[i].rank);
 		if (isfingers) {
 			for (int j = 0; j < M; j++) {
 				printf("finger N°%d : chord node %d mpi rank %d \n", j, nodes[i].fingers[j].key, nodes[i].fingers[j].rank);
+			}
+		}
+		if (isreverse) {
+			for (int j = 0; j < nodes[i].reverse_number; j++) {
+				printf("reverse chord node %d mpi rank %d \n", nodes[i].reverse[j].key, nodes[i].reverse[j].rank);
 			}
 		}
 	}

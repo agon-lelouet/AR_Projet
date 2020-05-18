@@ -42,7 +42,7 @@ void simulateur(int size, int max_node) {
 	for (int i = 0; i < size; i++) {
 		// sending the CHORD node ID
 		printf("sending CHORD ID to %d \n", i);
-		MPI_Send(&nodes[i].key, 1, MPI_INT, i, TAGINIT, MPI_COMM_WORLD);
+		MPI_Send(&nodes[i], 1, MPI_INT, i, TAGINIT, MPI_COMM_WORLD);
 		initiator = rand()%2;
 		MPI_Send(&initiator, 1, MPI_INT, i, TAGINIT, MPI_COMM_WORLD);
 		printf("node %d initiator = %d \n", i, initiator);
